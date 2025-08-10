@@ -1,0 +1,39 @@
+# 开发环境配置
+spring:
+  # 数据库配置 - 开发环境SQLite
+  datasource:
+    url: jdbc:sqlite:./data/dev/location_tracker_dev.db
+    driver-class-name: org.sqlite.JDBC
+    
+  # MyBatis-Plus配置 - 开发环境
+  mybatis-plus:
+    configuration:
+      log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# HTTPS配置 - 自签名证书
+server:
+  port: 8443
+  ssl:
+    enabled: true
+    key-store: classpath:ssl/keystore.p12
+    key-store-password: changeit
+    key-store-type: PKCS12
+    key-alias: tomcat
+    protocol: TLS
+    enabled-protocols: TLSv1.2,TLSv1.3
+
+# 开发环境日志
+logging:
+  level:
+    com.seeker.locationtracker: DEBUG
+    com.baomidou.mybatisplus: DEBUG
+    org.springframework.web: DEBUG
+
+# 开发环境特殊配置
+app:
+  # 开发环境安全配置较宽松
+  security:
+    rate-limit:
+      upload-per-minute: 1000
+      query-per-minute: 1000
+      config-per-minute: 100

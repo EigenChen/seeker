@@ -1,0 +1,68 @@
+# 位置追踪API测试
+# 使用VS Code的REST Client扩展运行这些测试
+
+### 1. 健康检查接口
+GET https://localhost:8443/api/location/health
+Accept: application/json
+
+### 2. 查询所有位置数据（验证数据是否写入）
+GET https://localhost:8443/api/location/list
+Accept: application/json
+
+### 3. 上传位置数据 - 北京天安门示例
+POST https://localhost:8443/api/location/upload
+Content-Type: application/json
+Accept: application/json
+
+{
+    "deviceId": "test-device-001",
+    "latitude": 39.9088,
+    "longitude": 116.3976,
+    "accuracy": 10.0,
+    "altitude": 50.0,
+    "speed": 0.0,
+    "bearing": 0.0,
+    "provider": "gps",
+    "locationTimestamp": 1691651400000
+}
+
+### 4. 上传位置数据 - 上海外滩示例  
+POST https://localhost:8443/api/location/upload
+Content-Type: application/json
+Accept: application/json
+
+{
+    "deviceId": "test-device-002", 
+    "latitude": 31.2397,
+    "longitude": 121.4999,
+    "accuracy": 15.0,
+    "altitude": 10.0,
+    "speed": 5.2,
+    "bearing": 180.0,
+    "provider": "network",
+    "locationTimestamp": 1691651460000
+}
+
+### 5. 测试参数验证 - 缺少必填字段
+POST https://localhost:8443/api/location/upload
+Content-Type: application/json
+Accept: application/json
+
+{
+    "deviceId": "",
+    "latitude": 39.9088,
+    "longitude": 116.3976,
+    "provider": "gps"
+}
+
+### 6. curl命令示例 (在终端中运行)
+# curl -k -X POST https://localhost:8443/api/location/upload \
+#   -H "Content-Type: application/json" \
+#   -d '{
+#     "deviceId": "curl-test-device",
+#     "latitude": 39.9088,
+#     "longitude": 116.3976,
+#     "accuracy": 10.0,
+#     "provider": "gps", 
+#     "locationTimestamp": 1691651400000
+#   }'

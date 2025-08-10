@@ -1,0 +1,41 @@
+<resources>
+    <string name="app_name">位置追踪器</string>
+    
+    <!-- 权限相关 -->
+    <string name="permission_location_title">位置权限</string>
+    <string name="permission_location_description">需要位置权限来获取GPS数据</string>
+    <string name="permission_background_location_title">后台位置权限</string>
+    <string name="permission_background_location_description">需要后台位置权限来持续追踪位置</string>
+    
+    <!-- 追踪状态 -->
+    <string name="tracking_started">位置追踪已启动</string>
+    <string name="tracking_stopped">位置追踪已停止</string>
+    <string name="tracking_in_progress">正在追踪位置...</string>
+    
+    <!-- 通知相关 -->
+    <string name="notification_channel_name">位置追踪服务</string>
+    <string name="notification_channel_description">GPS位置追踪和数据上传服务</string>
+    <string name="notification_title">位置追踪中</string>
+    <string name="notification_stop_action">停止</string>
+    
+    <!-- 按钮文本 -->
+    <string name="button_start_tracking">开始追踪</string>
+    <string name="button_stop_tracking">停止追踪</string>
+    <string name="button_upload_data">上传数据</string>
+    <string name="button_health_check">健康检查</string>
+    <string name="button_refresh">刷新</string>
+    <string name="button_request_permission">申请权限</string>
+    <string name="button_go_settings">去设置</string>
+    
+    <!-- 状态文本 -->
+    <string name="status_permission_granted">✓ 已授权</string>
+    <string name="status_permission_denied">✗ 未授权</string>
+    <string name="status_uploading">正在上传...</string>
+    <string name="status_health_checking">检查中...</string>
+    
+    <!-- 错误消息 -->
+    <string name="error_no_permission">缺少必要权限</string>
+    <string name="error_location_unavailable">位置服务不可用</string>
+    <string name="error_upload_failed">数据上传失败</string>
+    <string name="error_server_unreachable">服务器连接失败</string>
+</resources>

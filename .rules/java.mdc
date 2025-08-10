@@ -1,0 +1,273 @@
+---
+description: Java 开发约定和最佳实践
+globs: **/*.java
+alwaysApply: false
+---
+
+# Java 开发规范
+
+## 基本原则
+
+- 优先使用 Java 17+ 的现代特性
+- 遵循 SOLID 原则和设计模式
+- 优先使用不可变对象和函数式编程
+- 避免魔法数字和硬编码字符串
+- 保持代码简洁和可读性
+
+## 命名规范
+
+### 基本命名约定
+- **类和接口**：PascalCase (`UserService`, `PaymentRepository`)
+- **方法和变量**：camelCase (`getUserById`, `isValid`)
+- **常量**：UPPER_SNAKE_CASE (`MAX_RETRY_COUNT`, `DEFAULT_TIMEOUT`)
+- **包名**：全小写，使用点分隔 (`com.example.service`)
+- **枚举值**：UPPER_SNAKE_CASE (`ORDER_STATUS`, `PAYMENT_TYPE`)
+
+### 布尔变量命名
+- 使用 `is`、`has`、`can`、`should` 前缀
+- 示例：`isEnabled`, `hasPermission`, `canDelete`, `shouldRetry`
+
+### 集合命名
+- 使用复数形式：`users`, `orders`, `configurations`
+- Map类型明确键值：`userIdToNameMap`, `configKeyToValueMap`
+
+## 类设计原则
+
+### 类结构顺序
+```java
+public class ExampleClass {
+    // 1. 静态常量
+    private static final String DEFAULT_VALUE = "default";
+    
+    // 2. 实例变量
+    private final String name;
+    private int count;
+    
+    // 3. 构造函数
+    public ExampleClass(String name) {
+        this.name = name;
+    }
+    
+    // 4. 公共方法
+    public String getName() {
+        return name;
+    }
+    
+    // 5. 私有方法
+    private void validateInput() {
+        // ...
+    }
+    
+    // 6. 内部类
+    private static class InnerHelper {
+        // ...
+    }
+}
+```
+
+### 类设计原则
+- 保持类的单一职责
+- 优先使用组合而非继承
+- 使用 `final` 关键字保证不可变性
+- 类大小建议不超过 300 行代码
+- 公共方法不超过 15 个
+
+## 方法设计
+
+### 方法长度和复杂度
+- 方法长度建议不超过 30 行
+- 圈复杂度不超过 10
+- 参数个数不超过 5 个（使用对象封装多参数）
+
+### 方法命名约定
+- 动词开头，体现方法行为
+- 获取数据：`get*`, `find*`, `query*`
+- 设置数据：`set*`, `update*`, `modify*`
+- 布尔判断：`is*`, `has*`, `can*`, `should*`
+- 转换方法：`to*`, `from*`, `parse*`
+
+### 返回值处理
+- 优先使用 `Optional<T>` 而非 null
+- 集合返回空集合而非 null
+- 使用 `Result<T>` 或异常处理错误情况
+
+```java
+// 推荐
+public Optional<User> findUserById(Long id) {
+    return userRepository.findById(id);
+}
+
+public List<User> findAllUsers() {
+    return userRepository.findAll(); // 返回空列表而非 null
+}
+
+// 不推荐
+public User getUserById(Long id) {
+    return userRepository.findById(id).orElse(null);
+}
+```
+
+## 异常处理
+
+### 异常设计原则
+- 使用具体的异常类型而非通用异常
+- 创建业务相关的自定义异常
+- 异常信息要清晰且有助于调试
+- 避免在循环中处理异常
+
+### 异常处理模式
+```java
+// 自定义异常
+public class UserNotFoundException extends RuntimeException {
+    public UserNotFoundException(Long userId) {
+        super(String.format("User not found with id: %d", userId));
+    }
+}
+
+// 异常处理
+public User getUserById(Long id) {
+    return userRepository.findById(id)
+        .orElseThrow(() -> new UserNotFoundException(id));
+}
+```
+
+## 集合和流操作
+
+### 集合初始化
+```java
+// 推荐 - 使用工厂方法
+List<String> names = List.of("Alice", "Bob", "Charlie");
+Set<Integer> numbers = Set.of(1, 2, 3);
+Map<String, Integer> ageMap = Map.of("Alice", 25, "Bob", 30);
+
+// 可变集合
+List<String> mutableNames = new ArrayList<>(List.of("Alice", "Bob"));
+```
+
+### Stream API 使用
+```java
+// 链式操作保持可读性
+List<String> result = users.stream()
+    .filter(user -> user.isActive())
+    .map(User::getName)
+    .sorted()
+    .collect(Collectors.toList());
+
+// 复杂操作提取为方法
+List<String> activeUserNames = users.stream()
+    .filter(this::isActiveUser)
+    .map(this::formatUserName)
+    .collect(Collectors.toList());
+```
+
+## 并发编程
+
+### 线程安全
+- 优先使用不可变对象
+- 使用 `concurrent` 包下的集合类
+- 合理使用 `synchronized`、`volatile`、`AtomicReference`
+- 避免共享可变状态
+
+### CompletableFuture 使用
+```java
+public CompletableFuture<String> processDataAsync(String input) {
+    return CompletableFuture
+        .supplyAsync(() -> validateInput(input))
+        .thenApply(this::processData)
+        .thenCompose(this::saveToDatabase)
+        .exceptionally(this::handleError);
+}
+```
+
+## 资源管理
+
+### Try-with-resources
+```java
+// 推荐
+try (FileReader reader = new FileReader(file);
+     BufferedReader bufferedReader = new BufferedReader(reader)) {
+    return bufferedReader.lines()
+        .collect(Collectors.toList());
+} catch (IOException e) {
+    throw new FileProcessingException("Failed to read file", e);
+}
+```
+
+## 测试规范
+
+### 测试命名
+- 方法命名：`should_returnResult_when_condition`
+- 类命名：`ClassNameTest` 或 `ClassNameIT`（集成测试）
+
+### 测试结构
+```java
+@Test
+void should_returnUser_when_validIdProvided() {
+    // Given
+    Long userId = 1L;
+    User expectedUser = new User("John", "john@example.com");
+    when(userRepository.findById(userId)).thenReturn(Optional.of(expectedUser));
+    
+    // When
+    Optional<User> actualUser = userService.findById(userId);
+    
+    // Then
+    assertThat(actualUser).isPresent();
+    assertThat(actualUser.get().getName()).isEqualTo("John");
+}
+```
+
+## 日志规范
+
+### 日志级别使用
+- **ERROR**：系统错误，需要立即处理
+- **WARN**：警告信息，可能影响功能
+- **INFO**：重要的业务流程信息
+- **DEBUG**：调试信息，生产环境关闭
+
+### 日志格式
+```java
+// 使用 SLF4J
+private static final Logger log = LoggerFactory.getLogger(UserService.class);
+
+// 结构化日志
+log.info("User created successfully. userId={}, email={}", user.getId(), user.getEmail());
+
+// 异常日志
+log.error("Failed to create user. email={}", email, exception);
+```
+
+## 性能优化
+
+### 基本原则
+- 避免过早优化
+- 使用性能分析工具找出瓶颈
+- 合理使用缓存
+- 避免不必要的对象创建
+
+### 常见优化技巧
+```java
+// 使用 StringBuilder 进行字符串拼接
+StringBuilder sb = new StringBuilder();
+for (String item : items) {
+    sb.append(item).append(", ");
+}
+
+// 使用合适的集合初始容量
+List<String> list = new ArrayList<>(expectedSize);
+Map<String, String> map = new HashMap<>(expectedSize);
+```
+
+## 代码质量
+
+### 静态分析工具
+- 使用 **SpotBugs**、**PMD**、**Checkstyle**
+- 配置 IDE 代码检查规则
+- 集成到 CI/CD 流程中
+
+### 代码审查要点
+- 功能正确性
+- 代码可读性
+- 性能考虑
+- 安全性检查
+- 测试覆盖率

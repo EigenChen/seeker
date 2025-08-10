@@ -1,0 +1,594 @@
+---
+description: Spring Boot 开发约定和最佳实践
+globs: **/*.java,**/application*.yml,**/application*.properties
+alwaysApply: false
+---
+
+# Spring Boot 开发规范
+
+## 项目结构
+
+### 标准目录结构
+```
+src/main/java/com/company/app/
+├── Application.java                 # 启动类
+├── config/                         # 配置类
+│   ├── DatabaseConfig.java
+│   ├── SecurityConfig.java
+│   └── WebConfig.java
+├── controller/                     # 控制器层
+│   ├── LocationController.java
+│   └── HealthController.java
+├── service/                        # 服务层
+│   ├── LocationService.java
+│   └── impl/
+│       └── LocationServiceImpl.java
+├── repository/                     # 数据访问层
+│   └── LocationRepository.java
+├── entity/                         # 实体类
+│   └── Location.java
+├── dto/                           # 数据传输对象
+│   ├── request/
+│   │   └── LocationUploadRequest.java
+│   └── response/
+│       └── LocationUploadResponse.java
+├── exception/                     # 异常处理
+│   ├── GlobalExceptionHandler.java
+│   └── BusinessException.java
+└── util/                          # 工具类
+    └── EncryptionUtil.java
+
+src/main/resources/
+├── application.yml                # 主配置文件
+├── application-dev.yml           # 开发环境配置
+├── application-prod.yml          # 生产环境配置
+└── db/migration/                 # 数据库迁移脚本
+    └── V1__create_location_table.sql
+```
+
+### 包命名规范
+- 按功能模块划分包，不按层次划分
+- 使用域名倒序：`com.company.app.module`
+- 避免过深的包层次（不超过5层）
+
+## 注解使用规范
+
+### Spring Core 注解
+```java
+@RestController
+@RequestMapping("/api/v1/locations")
+@Validated
+@Slf4j
+public class LocationController {
+    
+    private final LocationService locationService;
+    
+    // 构造函数注入（推荐）
+    public LocationController(LocationService locationService) {
+        this.locationService = locationService;
+    }
+}
+
+@Service
+@Transactional(readOnly = true)
+public class LocationServiceImpl implements LocationService {
+    
+    @Transactional // 写操作移除 readOnly
+    public Location saveLocation(LocationDto locationDto) {
+        // ...
+    }
+}
+
+@Repository
+public interface LocationRepository extends JpaRepository<Location, Long> {
+    // 自定义查询方法
+}
+```
+
+### 依赖注入最佳实践
+```java
+// 推荐：构造函数注入
+@Service
+public class LocationService {
+    private final LocationRepository locationRepository;
+    private final EncryptionService encryptionService;
+    
+    public LocationService(LocationRepository locationRepository, 
+                          EncryptionService encryptionService) {
+        this.locationRepository = locationRepository;
+        this.encryptionService = encryptionService;
+    }
+}
+
+// 不推荐：字段注入
+@Service
+public class LocationService {
+    @Autowired
+    private LocationRepository locationRepository;
+}
+```
+
+## 控制器层规范
+
+### REST API 设计
+```java
+@RestController
+@RequestMapping("/api/v1/locations")
+@Validated
+public class LocationController {
+    
+    @PostMapping
+    public ResponseEntity<LocationUploadResponse> uploadLocations(
+            @Valid @RequestBody LocationUploadRequest request) {
+        
+        LocationUploadResponse response = locationService.uploadLocations(request);
+        return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/{deviceId}")
+    public ResponseEntity<List<LocationDto>> getLocationsByDevice(
+            @PathVariable @NotBlank String deviceId,
+            @RequestParam @Min(1) @Max(100) int limit) {
+        
+        List<LocationDto> locations = locationService.getLocationsByDevice(deviceId, limit);
+        return ResponseEntity.ok(locations);
+    }
+    
+    @GetMapping("/health")
+    public ResponseEntity<HealthResponse> healthCheck() {
+        HealthResponse response = new HealthResponse("ok", Instant.now());
+        return ResponseEntity.ok(response);
+    }
+}
+```
+
+### 统一响应格式
+```java
+@Data
+@Builder
+public class ApiResponse<T> {
+    private boolean success;
+    private String message;
+    private T data;
+    private long timestamp;
+    
+    public static <T> ApiResponse<T> success(T data) {
+        return ApiResponse.<T>builder()
+            .success(true)
+            .message("操作成功")
+            .data(data)
+            .timestamp(System.currentTimeMillis())
+            .build();
+    }
+    
+    public static <T> ApiResponse<T> error(String message) {
+        return ApiResponse.<T>builder()
+            .success(false)
+            .message(message)
+            .timestamp(System.currentTimeMillis())
+            .build();
+    }
+}
+```
+
+## 数据层规范
+
+### Entity 设计
+```java
+@Entity
+@Table(name = "locations")
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class Location {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(name = "device_id", nullable = false, length = 100)
+    private String deviceId;
+    
+    @Column(name = "latitude", nullable = false, precision = 10, scale = 8)
+    private Double latitude;
+    
+    @Column(name = "longitude", nullable = false, precision = 11, scale = 8)
+    private Double longitude;
+    
+    @Column(name = "accuracy")
+    private Float accuracy;
+    
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
+}
+```
+
+### Repository 接口
+```java
+@Repository
+public interface LocationRepository extends JpaRepository<Location, Long> {
+    
+    // 方法命名查询
+    List<Location> findByDeviceIdAndCreatedAtBetween(
+        String deviceId, LocalDateTime start, LocalDateTime end);
+    
+    // 自定义查询
+    @Query("SELECT l FROM Location l WHERE l.deviceId = :deviceId " +
+           "ORDER BY l.createdAt DESC")
+    Page<Location> findLatestLocationsByDevice(
+        @Param("deviceId") String deviceId, Pageable pageable);
+    
+    // 原生查询（复杂场景）
+    @Query(value = "SELECT COUNT(*) FROM locations WHERE device_id = ?1 " +
+                   "AND created_at > ?2", nativeQuery = true)
+    long countRecentLocationsByDevice(String deviceId, LocalDateTime since);
+}
+```
+
+## 服务层规范
+
+### 服务接口设计
+```java
+public interface LocationService {
+    
+    /**
+     * 批量保存位置数据
+     * @param request 位置上传请求
+     * @return 上传结果
+     */
+    LocationUploadResponse uploadLocations(LocationUploadRequest request);
+    
+    /**
+     * 根据设备ID查询位置历史
+     * @param deviceId 设备ID
+     * @param limit 限制数量
+     * @return 位置列表
+     */
+    List<LocationDto> getLocationsByDevice(String deviceId, int limit);
+    
+    /**
+     * 删除过期的位置数据
+     * @param retentionDays 保留天数
+     * @return 删除数量
+     */
+    int cleanExpiredLocations(int retentionDays);
+}
+```
+
+### 服务实现
+```java
+@Service
+@Transactional(readOnly = true)
+@Slf4j
+public class LocationServiceImpl implements LocationService {
+    
+    private final LocationRepository locationRepository;
+    private final EncryptionService encryptionService;
+    private final LocationMapper locationMapper;
+    
+    public LocationServiceImpl(LocationRepository locationRepository,
+                              EncryptionService encryptionService,
+                              LocationMapper locationMapper) {
+        this.locationRepository = locationRepository;
+        this.encryptionService = encryptionService;
+        this.locationMapper = locationMapper;
+    }
+    
+    @Override
+    @Transactional
+    public LocationUploadResponse uploadLocations(LocationUploadRequest request) {
+        log.info("开始处理位置数据上传，设备ID: {}, 数据条数: {}", 
+                request.getDeviceId(), request.getLocations().size());
+        
+        try {
+            List<Location> locations = request.getLocations().stream()
+                .map(this::decryptAndConvertLocation)
+                .collect(Collectors.toList());
+            
+            List<Location> savedLocations = locationRepository.saveAll(locations);
+            
+            log.info("位置数据保存成功，保存条数: {}", savedLocations.size());
+            
+            return LocationUploadResponse.builder()
+                .success(true)
+                .message("上传成功")
+                .processedCount(savedLocations.size())
+                .build();
+                
+        } catch (Exception e) {
+            log.error("位置数据上传失败", e);
+            throw new BusinessException("位置数据上传失败: " + e.getMessage());
+        }
+    }
+    
+    private Location decryptAndConvertLocation(LocationDto locationDto) {
+        // 解密和转换逻辑
+        String decryptedPayload = encryptionService.decrypt(locationDto.getEncryptedPayload());
+        return locationMapper.toEntity(locationDto, decryptedPayload);
+    }
+}
+```
+
+## 配置管理
+
+### application.yml 结构
+```yaml
+# 基础配置
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: location-tracker-server
+  
+  # 数据库配置
+  datasource:
+    url: jdbc:mysql://localhost:3306/location_tracker?useUnicode=true&characterEncoding=UTF-8&useSSL=false
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    
+  # JPA 配置
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: true
+        
+  # 日志配置
+logging:
+  level:
+    com.company.app: INFO
+    org.springframework.web: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/application.log
+
+# 应用自定义配置
+app:
+  encryption:
+    algorithm: AES
+    key: ${ENCRYPTION_KEY:your-secret-key-here}
+  location:
+    retention-days: 30
+    max-batch-size: 100
+```
+
+### 配置类
+```java
+@Configuration
+@ConfigurationProperties(prefix = "app")
+@Data
+public class AppProperties {
+    
+    private Encryption encryption = new Encryption();
+    private Location location = new Location();
+    
+    @Data
+    public static class Encryption {
+        private String algorithm = "AES";
+        private String key;
+    }
+    
+    @Data
+    public static class Location {
+        private int retentionDays = 30;
+        private int maxBatchSize = 100;
+    }
+}
+```
+
+## 异常处理
+
+### 全局异常处理器
+```java
+@RestControllerAdvice
+@Slf4j
+public class GlobalExceptionHandler {
+    
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Object>> handleBusinessException(BusinessException e) {
+        log.warn("业务异常: {}", e.getMessage());
+        return ResponseEntity.badRequest()
+            .body(ApiResponse.error(e.getMessage()));
+    }
+    
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<ApiResponse<Object>> handleValidationException(ValidationException e) {
+        log.warn("参数校验异常: {}", e.getMessage());
+        return ResponseEntity.badRequest()
+            .body(ApiResponse.error("参数校验失败: " + e.getMessage()));
+    }
+    
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Object>> handleException(Exception e) {
+        log.error("系统异常", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(ApiResponse.error("系统内部错误"));
+    }
+}
+
+// 自定义业务异常
+public class BusinessException extends RuntimeException {
+    public BusinessException(String message) {
+        super(message);
+    }
+    
+    public BusinessException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
+```
+
+## 数据校验
+
+### DTO 校验
+```java
+@Data
+@Builder
+public class LocationUploadRequest {
+    
+    @NotBlank(message = "设备ID不能为空")
+    @Size(max = 100, message = "设备ID长度不能超过100")
+    private String deviceId;
+    
+    @NotEmpty(message = "位置数据不能为空")
+    @Size(max = 100, message = "单次上传位置数据不能超过100条")
+    @Valid
+    private List<LocationDto> locations;
+    
+    @NotNull(message = "设备信息不能为空")
+    @Valid
+    private DeviceInfo deviceInfo;
+}
+
+@Data
+public class LocationDto {
+    
+    @NotNull(message = "纬度不能为空")
+    @DecimalMin(value = "-90.0", message = "纬度必须在-90到90之间")
+    @DecimalMax(value = "90.0", message = "纬度必须在-90到90之间")
+    private Double latitude;
+    
+    @NotNull(message = "经度不能为空")
+    @DecimalMin(value = "-180.0", message = "经度必须在-180到180之间")
+    @DecimalMax(value = "180.0", message = "经度必须在-180到180之间")
+    private Double longitude;
+    
+    @Min(value = 0, message = "精度不能为负数")
+    private Float accuracy;
+    
+    @NotNull(message = "时间戳不能为空")
+    @Min(value = 1, message = "时间戳无效")
+    private Long timestamp;
+}
+```
+
+## 测试规范
+
+### 单元测试
+```java
+@ExtendWith(MockitoExtension.class)
+class LocationServiceTest {
+    
+    @Mock
+    private LocationRepository locationRepository;
+    
+    @Mock
+    private EncryptionService encryptionService;
+    
+    @InjectMocks
+    private LocationServiceImpl locationService;
+    
+    @Test
+    void should_saveLocation_when_validDataProvided() {
+        // Given
+        LocationUploadRequest request = createValidRequest();
+        Location savedLocation = createLocationEntity();
+        
+        when(encryptionService.decrypt(anyString())).thenReturn("decrypted-data");
+        when(locationRepository.saveAll(anyList())).thenReturn(List.of(savedLocation));
+        
+        // When
+        LocationUploadResponse response = locationService.uploadLocations(request);
+        
+        // Then
+        assertThat(response.isSuccess()).isTrue();
+        assertThat(response.getProcessedCount()).isEqualTo(1);
+        
+        verify(locationRepository).saveAll(anyList());
+    }
+}
+```
+
+### 集成测试
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@TestPropertySource(properties = {
+    "spring.datasource.url=jdbc:h2:mem:testdb",
+    "spring.jpa.hibernate.ddl-auto=create-drop"
+})
+class LocationControllerIT {
+    
+    @Autowired
+    private TestRestTemplate restTemplate;
+    
+    @Autowired
+    private LocationRepository locationRepository;
+    
+    @Test
+    void should_uploadLocations_when_validRequest() {
+        // Given
+        LocationUploadRequest request = createValidRequest();
+        
+        // When
+        ResponseEntity<LocationUploadResponse> response = restTemplate
+            .postForEntity("/api/v1/locations", request, LocationUploadResponse.class);
+        
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().isSuccess()).isTrue();
+        
+        // 验证数据库
+        List<Location> savedLocations = locationRepository.findAll();
+        assertThat(savedLocations).hasSize(1);
+    }
+}
+```
+
+## 性能和监控
+
+### Actuator 配置
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+```
+
+### 性能监控
+```java
+@Component
+@Slf4j
+public class PerformanceMonitor {
+    
+    private final MeterRegistry meterRegistry;
+    
+    public PerformanceMonitor(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
+    
+    @EventListener
+    public void handleLocationUpload(LocationUploadEvent event) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+        sample.stop(Timer.builder("location.upload.duration")
+            .tag("device_id", event.getDeviceId())
+            .register(meterRegistry));
+        
+        meterRegistry.counter("location.upload.count",
+            "status", event.isSuccess() ? "success" : "failure")
+            .increment();
+    }
+}
+```
